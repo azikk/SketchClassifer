@@ -11,19 +11,20 @@ from tensorflow.python.tools import optimize_for_inference_lib
 from tensorflow.examples.tutorials.mnist import input_data
 import pandas as pd
 import  numpy as np
-import sys,getopt
+import sys,getopt,time
 
 output_path = "./output/"
+dataset_path = "/input/dataset.csv"
 MODEL_NAME = 'ai'
 NUM_STEPS = 10000
 BATCH_SIZE = 100
 DISPLAY_SIZE = 1
-NUM_CLASSES = 125
+NUM_CLASSES = 250
 batch_index = 0
 
 def load_dataset():
     print("Dataset loading...")
-    df_train = pd.read_csv('dataset.csv')
+    df_train = pd.read_csv(dataset_path)
     trainY = df_train.loc[:,"label"].as_matrix()
     trainY = np.asarray(trainY, dtype=np.int32)
     trainY = np.eye(NUM_CLASSES)[trainY]
@@ -149,16 +150,18 @@ def train(x, keep_prob, y_, train_step, loss, accuracy,
         # op to write logs to Tensorboard
         summary_writer = tf.summary.FileWriter('logs/',
             graph=tf.get_default_graph())
-        batch_index = 0;
+        start_time = time.time()
         for step in range(NUM_STEPS):
             batch = next_batch(step)
             if step % DISPLAY_SIZE == 0:
+                elapsed_time = time.time()-start_time
                 train_accuracy = accuracy.eval(feed_dict={
                     x:batch[0], y_: batch[1], keep_prob: 1.0})
-                print('step %d, training accuracy %f' % (step, train_accuracy))
+                print('step %d, training accuracy %f elapsed time %s' % (step, train_accuracy,time.strftime('%H:%M:%S',time.gmtime(elapsed_time))))
             _,summary = sess.run([train_step, merged_summary_op],
                 feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
             summary_writer.add_summary(summary, step)
+        print('Total elaped time: %s Average step time: %f sec.'%(time.strftime('%H:%M:%S',time.gmtime(elapsed_time)),elapsed_time/NUM_STEPS))
         print("Saving model...")
         saver.save(sess, output_path + MODEL_NAME + '.chkp',global_step=NUM_STEPS)
         print("Model saved!")
@@ -188,13 +191,14 @@ def export_model(input_node_names, output_node_name):
     print("graph saved!")
 
 def main():
-    global output_path
+    global output_path,dataset_path
     ops,args = getopt.getopt(sys.argv,"f",["floyd"])
 
     for  arg in args:
         if arg == '-f':
             print("Running on floyd mode")
             output_path = "/output/"
+            dataset_path = "/input/dataset.csv"
 
     if not path.exists('./output'):
         os.mkdir('./output')
