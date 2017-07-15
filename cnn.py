@@ -8,92 +8,27 @@ import tensorflow as tf
 from tensorflow.python.tools import freeze_graph
 from tensorflow.python.tools import optimize_for_inference_lib
 
-from tensorflow.examples.tutorials.mnist import input_data
-import pandas as pd
-import  numpy as np
 import sys,getopt,time
+from dataset_helper import Dataset
 
 output_path = "./output/"
-dataset_path = "/input/dataset.csv"
+dataset_path = "./dataset/dataset.csv"
+model_path =  "./output/"
 MODEL_NAME = 'ai'
-NUM_STEPS = 10000
-BATCH_SIZE = 100
+NUM_STEPS = 1000
+BATCH_SIZE = 128
 DISPLAY_SIZE = 1
-NUM_CLASSES = 250
-batch_index = 0
+NUM_CLASSES = 125
+IMAGE_SIZE = 48
 
-def load_dataset():
-    print("Dataset loading...")
-    df_train = pd.read_csv(dataset_path)
-    trainY = df_train.loc[:,"label"].as_matrix()
-    trainY = np.asarray(trainY, dtype=np.int32)
-    trainY = np.eye(NUM_CLASSES)[trainY]
-    trainX = np.zeros((trainY.shape[0], 28*28),dtype=np.float32)
-    for i in range(trainX.shape[0]):
-        trainX[i] = np.fromstring(df_train.loc[:,"raw_data"].loc[i],dtype=np.float32,sep=' ')
-    perm = np.arange(trainX.shape[0])
-    np.random.shuffle(perm)
-    trainX = trainX[perm]
-    trainY = trainY[perm]
-    testY = trainY[:1000]
-    testX = trainX[:1000]
-    trainY = trainY[1000:]
-    trainX = trainX[1000:]
-    return trainX,trainY,testX,testY
-
-def next_batch(epoch,fake_data=False, shuffle=True):
-    global trainX,trainY,batch_index
-    """Return the next `batch_size` examples from this data set."""
-    if fake_data:
-      fake_image = [1] * (28*28)
-      fake_label = [1] + [0] * NUM_CLASSES
-
-      return [fake_image for _ in range(BATCH_SIZE)], [
-          fake_label for _ in range(BATCH_SIZE)
-      ]
-
-    # Shuffle for the first epoch
-    if batch_index==0 and epoch == 0 and shuffle:
-      perm0 = np.arange(trainX.shape[0])
-      np.random.shuffle(perm0)
-      trainX = trainX[perm0]
-      trainY = trainY[perm0]
-
-    # Go to the next epoch
-    if batch_index + BATCH_SIZE > trainX.shape[0]:
-      # Finished epoch
-      # Get the rest examples in this epoch
-      rest_num_examples = trainX.shape[0] - batch_index
-      images_rest_part = trainX[batch_index:trainX.shape[0]]
-      labels_rest_part = trainY[batch_index:trainX.shape[0]]
-      # Shuffle the data
-      if shuffle:
-        perm = np.arange(trainX.shape[0])
-        np.random.shuffle(perm)
-        trainX = trainX[perm]
-        trainY = trainY[perm]
-      # Start next epoch
-      start = 0
-      batch_index = BATCH_SIZE - rest_num_examples
-      end = batch_index
-      images_new_part = trainX[start:end]
-      labels_new_part = trainY[start:end]
-      return np.concatenate((images_rest_part, images_new_part), axis=0) , np.concatenate((labels_rest_part, labels_new_part), axis=0)
-    else:
-      batch_index += BATCH_SIZE
-      end = batch_index
-      return trainX[end-BATCH_SIZE:end], trainY[end-BATCH_SIZE:end]
-
-trainX, trainY, testX, testY = load_dataset()
-
-def model_input(input_node_name, keep_prob_node_name):
-    x = tf.placeholder(tf.float32, shape=[None, trainX.shape[1]], name=input_node_name)
+def model_input(dataset,input_node_name, keep_prob_node_name):
+    x = tf.placeholder(tf.float32, shape=[None, dataset.trainX.shape[1]], name=input_node_name)
     keep_prob = tf.placeholder(tf.float32, name=keep_prob_node_name)
     y_ = tf.placeholder(tf.float32, shape=[None,NUM_CLASSES],name="labels")
     return x, keep_prob, y_
 
 def build_model(x, keep_prob, y_, output_node_name):
-    x_image = tf.reshape(x, [-1, 28, 28, 1])
+    x_image = tf.reshape(x, [-1, 48, 48, 1])
     # 48*48*1
 
     conv1 = tf.layers.conv2d(x_image, 64, 5, 1, 'same', activation=tf.nn.relu)
@@ -111,7 +46,17 @@ def build_model(x, keep_prob, y_, output_node_name):
     pool3 = tf.layers.max_pooling2d(conv3, 2, 2, 'same')
     # 6*6*256
 
-    flatten = tf.reshape(pool3, [-1, 4*4*256])
+    conv4 = tf.layers.conv2d(pool3, 512, 5, 1, 'same', activation=tf.nn.relu)
+    # 6*6*512
+    pool4 = tf.layers.max_pooling2d(conv4, 2, 2, 'same')
+    # 3*3*512
+
+    conv5 = tf.layers.conv2d(pool4, 1024, 5, 1, 'same', activation=tf.nn.relu)
+    # 3*3*1024
+    pool5 = tf.layers.max_pooling2d(conv5, 2, 2, 'same')
+    # 2*2*1024
+
+    flatten = tf.reshape(pool5, [-1, 2*2*1024])
     fc = tf.layers.dense(flatten, 1024, activation=tf.nn.relu)
     dropout = tf.nn.dropout(fc, keep_prob)
     logits = tf.layers.dense(dropout, NUM_CLASSES)
@@ -134,25 +79,25 @@ def build_model(x, keep_prob, y_, output_node_name):
     return train_step, loss, accuracy, merged_summary_op
 
 
-def train(x, keep_prob, y_, train_step, loss, accuracy,
-        merged_summary_op, saver):
+def train(dataset,x, keep_prob, y_, train_step, loss, accuracy,
+        merged_summary_op, saver, save, restore):
+
     print("training start...")
 
-    #mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
-
     init_op = tf.global_variables_initializer()
-
     with tf.Session() as sess:
         sess.run(init_op)
+        if restore:
+            saver = tf.train.import_meta_graph(model_path + 'ai.chkp.meta')
+            saver.restore(sess, '/model/ai.chkp')
         tf.train.write_graph(sess.graph_def, output_path,
             MODEL_NAME + '.pbtxt', True)
-
         # op to write logs to Tensorboard
         summary_writer = tf.summary.FileWriter('logs/',
             graph=tf.get_default_graph())
         start_time = time.time()
         for step in range(NUM_STEPS):
-            batch = next_batch(step)
+            batch = dataset.next_batch(shuffle=True)
             if step % DISPLAY_SIZE == 0:
                 elapsed_time = time.time()-start_time
                 train_accuracy = accuracy.eval(feed_dict={
@@ -161,12 +106,18 @@ def train(x, keep_prob, y_, train_step, loss, accuracy,
             _,summary = sess.run([train_step, merged_summary_op],
                 feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
             summary_writer.add_summary(summary, step)
+            if step>0 and step % 500 == 0:
+                test_accuracy = accuracy.eval(feed_dict={x: dataset.testX,
+                                                         y_: dataset.testY,
+                                                         keep_prob: 1.0})
+                print('test accuracy %g' % test_accuracy)
         print('Total elaped time: %s Average step time: %f sec.'%(time.strftime('%H:%M:%S',time.gmtime(elapsed_time)),elapsed_time/NUM_STEPS))
-        print("Saving model...")
-        saver.save(sess, output_path + MODEL_NAME + '.chkp',global_step=NUM_STEPS)
-        print("Model saved!")
-        test_accuracy = accuracy.eval(feed_dict={x: testX,
-                                    y_: testY,
+        if save:
+            print("Saving model...")
+            saver.save(sess, output_path + MODEL_NAME + '.chkp')
+            print("Model saved!")
+        test_accuracy = accuracy.eval(feed_dict={x: dataset.testX,
+                                    y_: dataset.testY,
                                     keep_prob: 1.0})
         print('test accuracy %g' % test_accuracy)
 
@@ -174,7 +125,7 @@ def train(x, keep_prob, y_, train_step, loss, accuracy,
 
 def export_model(input_node_names, output_node_name):
     freeze_graph.freeze_graph(output_path + MODEL_NAME + '.pbtxt', None, False,
-        output_path + MODEL_NAME+ '.chkp' + "-"+ str(NUM_STEPS), output_node_name, "save/restore_all",
+        output_path + MODEL_NAME+ '.chkp', output_node_name, "save/restore_all",
         "save/Const:0", output_path+'frozen_' + MODEL_NAME + '.pb', True, "")
 
     input_graph_def = tf.GraphDef()
@@ -191,30 +142,40 @@ def export_model(input_node_names, output_node_name):
     print("graph saved!")
 
 def main():
-    global output_path,dataset_path
-    ops,args = getopt.getopt(sys.argv,"f",["floyd"])
+    global output_path,save,restore,model_path
+    dataset = Dataset('./dataset/dataset.csv',125,48,BATCH_SIZE)
+    ops,args = getopt.getopt(sys.argv,"f:s:r",["floyd,save,restore"])
+    save = False
+    restore = False
 
     for  arg in args:
         if arg == '-f':
             print("Running on floyd mode")
             output_path = "/output/"
-            dataset_path = "/input/dataset.csv"
+            dataset.dataset_path = "/dataset/dataset.csv"
+            model_path = "/model/"
+        if arg =='-s':
+            save = True
+        if arg == '-r':
+            restore = True
 
     if not path.exists('./output'):
         os.mkdir('./output')
+
+    dataset.load_dataset(shuffle=True)
 
     input_node_name = 'input'
     keep_prob_node_name = 'keep_prob'
     output_node_name = 'output'
 
-    x, keep_prob, y_ = model_input(input_node_name, keep_prob_node_name)
+    x, keep_prob, y_ = model_input(dataset,input_node_name, keep_prob_node_name)
 
     train_step, loss, accuracy, merged_summary_op = build_model(x, keep_prob,
         y_, output_node_name)
     saver = tf.train.Saver()
 
-    train(x, keep_prob, y_, train_step, loss, accuracy,
-        merged_summary_op, saver)
+    train(dataset,x, keep_prob, y_, train_step, loss, accuracy,
+        merged_summary_op, saver,save,restore)
 
     export_model([input_node_name, keep_prob_node_name], output_node_name)
 

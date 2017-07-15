@@ -9,8 +9,4 @@ lib64
 parts
 sdist
 var
-/data
-/logs
-/output
-/dataset
-*.csv
+

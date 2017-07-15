@@ -10,11 +10,11 @@ def rgb2gray(rgb):
 
 def load_dataset():
     print("Dataset loading...")
-    df_train = pd.read_csv('dataset.csv')
+    df_train = pd.read_csv('./dataset/dataset.csv')
     trainY = df_train.loc[:,"label"].as_matrix()
     trainY = np.asarray(trainY, dtype=np.int32)
     trainY = np.eye(NUM_CLASSES)[trainY]
-    trainX = np.zeros((trainY.shape[0], 28*28),dtype=np.float32)
+    trainX = np.zeros((trainY.shape[0], 48*48),dtype=np.float32)
     for i in range(trainX.shape[0]):
         trainX[i] = np.fromstring(df_train.loc[:,"raw_data"].loc[i],dtype=np.float32,sep=' ')
     # df_test = pd.read_csv('test.csv')
@@ -30,24 +30,22 @@ def load_dataset():
     testX = trainX[:50]
     return trainX,trainY,testX,testY
 
-IMAGE_SIZE = 28
-NUM_CLASSES = 26
-file = "bell.png"
+IMAGE_SIZE = 48
+NUM_CLASSES = 125
+file = "apple.png"
 image = img.imread(file)
-image = imresize(image, (28, 28), interp='lanczos')
+image = imresize(image, (48, 48), interp='lanczos')
 image = rgb2gray(image)
-
 # plt.imshow(image,cmap='gray')
 # plt.show()
 image = image.flatten()
 image = image.astype(float)
-
 label = [1] + [0] * (NUM_CLASSES-1)
-trainX,trainY,testX,testY = load_dataset()
+# trainX,trainY,testX,testY = load_dataset()
 
 with tf.Session() as sess:
-    saver = tf.train.import_meta_graph('./output/ai.chkp-1000.meta')
-    saver.restore(sess,tf.train.latest_checkpoint('./output/'))
+    saver = tf.train.import_meta_graph('./output/ai.chkp.meta')
+    saver.restore(sess,'./output/ai.chkp')
     graph = tf.get_default_graph()
     x = graph.get_tensor_by_name("input:0")
     y_ = graph.get_tensor_by_name("labels:0")

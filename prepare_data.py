@@ -8,12 +8,19 @@ from skimage import io
 from skimage import exposure
 
 from skimage import color
-
+import os.path as path
 
 import os
 
 def rgb2gray(rgb):
-    return np.dot(rgb[...,:3], [0.299, 0.587, 0.114])
+    R = rgb[:, :, 0]
+    G = rgb[:, :, 1]
+    B = rgb[:, :, 2]
+    img_gray = R * .299 + G * .587 + B * .114
+    return  img_gray
+
+if not path.exists('./dataset'):
+  os.mkdir('./dataset')
 
 raw_data_path = "./data/"
 dirs = os.listdir(raw_data_path)
@@ -40,8 +47,8 @@ dataset = np.zeros(num_examples, dtype='int8, object')
 index = 0
 for file in filenames:
   image = img.imread(file)
-  image = imresize(image,(28,28),interp='lanczos')
   image = rgb2gray(image)
+  image = imresize(image,(48,48),interp='lanczos')
   # plt.imshow(image,cmap='gray')
   # plt.show()
   flatten = image.flatten()
@@ -49,7 +56,8 @@ for file in filenames:
   dataset[index][1] = ' '.join(map(str, flatten.astype(float)))
   index += 1
 
-with open('dataset.csv', 'wb') as f:
+
+with open('./dataset/dataset.csv', 'wb') as f:
   f.write(b'label,raw_data\n')
   np.savetxt(f, dataset, delimiter=' ',fmt='%i,%s')
 

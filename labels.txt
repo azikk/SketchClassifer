@@ -1,3 +1,4 @@
+.floyddata
 airplane
 alarm_clock
 ant
