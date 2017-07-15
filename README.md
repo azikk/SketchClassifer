@@ -1,4 +1,5 @@
-# DrawWithAI
+# Sketch Classifer with TensorFlow
+
 CNN classifier for hand drawn sketchs written with TensorFlow
 
 You can prepare your own dataset with prepare_data.py. The structure should look like this:
